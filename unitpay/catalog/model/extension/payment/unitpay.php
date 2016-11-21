@@ -24,7 +24,7 @@ class ModelExtensionPaymentUnitpay extends Model {
 				'code'         => 'unitpay',
 				'title'      => $this->language->get('text_title'),
 				'terms'      => '',
-				'sort_order' => $this->config->get('unitpay_sort_order')
+				'sort_order' => 0
 			);
 		}
 

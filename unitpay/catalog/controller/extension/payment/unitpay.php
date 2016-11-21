@@ -1,14 +1,14 @@
 <?php
 
 class ControllerExtensionPaymentUnitpay extends Controller {
-	public function index() {
+    public function index() {
         $data['button_confirm'] = $this->language->get('button_confirm');
         $data['button_back'] = $this->language->get('button_back');
         $data['text_loading'] = $this->language->get('text_loading');
 
         $this->load->model('checkout/order');
         $order_info = $this->model_checkout_order->getOrder($this->session->data['order_id']);
-  
+
         $data['unitpay_login'] = $this->config->get('unitpay_login');
         $data['unitpay_key']= $this->config->get('unitpay_key');
         $data['success_url']= $this->config->get('unitpay_success_url');
@@ -19,37 +19,41 @@ class ControllerExtensionPaymentUnitpay extends Controller {
         $data['inv_desc'] = $this->config->get('config_store') . ' ' . $order_info['payment_firstname'] . ' ' . $order_info['payment_address_1'] . ' ' . $order_info['payment_address_2'] . ' ' . $order_info['payment_city'] . ' ' . $order_info['email'];
 
         // Сумма заказа
-		$rur_code = 'RUB';
-		$rur_order_total = $this->currency->convert($order_info['total'], $order_info['currency_code'], $rur_code);
-		$data['out_summ'] = $this->currency->format($rur_order_total, $rur_code, $order_info['currency_value'], FALSE);
-        
+        $rur_code = 'RUB';
+        $rur_order_total = $this->currency->convert($order_info['total'], $order_info['currency_code'], $rur_code);
+        $data['out_summ'] = $this->currency->format($rur_order_total, $rur_code, $order_info['currency_value'], FALSE);
+        $data['out_summ'] = number_format($data['out_summ'], 2);
+
         $data['action']="https://unitpay.ru/pay/";
 
-		// Кодировка
-		//$data['encoding'] = "utf-8";
+        // Кодировка
+        //$data['encoding'] = "utf-8";
 
-		$data['merchant_url'] = $data['action'] .
-				$data['unitpay_login'] .
-    				'?sum='			. $data['out_summ'] .
-    				'&account='		. $data['inv_id']	.
-                    '&desc='        . $data['inv_desc'] .
-    				'&unitpay_login='		. $data['unitpay_login'] .
-                    '&resultUrl=' .  $data['success_url'];
-			
+        $data['merchant_url'] = $data['action'] .
+            $data['unitpay_login'] .
+            '?sum='			. $data['out_summ'] .
+            '&account='		. $data['inv_id']	.
+            '&desc='        . $data['inv_desc'] .
+            '&unitpay_login='		. $data['unitpay_login'] .
+            '&resultUrl=' .  $data['success_url'];
+
 //tesrt
-		$this->id = 'payment';
-        return $this->load->view('extension/payment/unitpay.tpl', $data);
-        
-	}
+        $this->id = 'payment';
+
+        if (file_exists(DIR_TEMPLATE . $this->config->get('config_template') . '/template/extension/payment/unitpay.tpl')) {
+            return $this->load->view($this->config->get('config_template') . '/template/extension/payment/unitpay.tpl', $data);
+        } else {
+            return $this->load->view('default/template/extension/payment/unitpay.tpl', $data);
+        }
+
+    }
 
     public function callback() {
-    	echo $this->getResult();
-	}
-    
+        echo $this->getResult();
+    }
+
     public function getResult(){
         $request = $_GET;
-//preg_match_all('/method=(.*)/', $request['route'], $d);
-//$request['method']=$d['1']['0'];
 
         if (empty($request['method']) || empty($request['params']) || !is_array($request['params'])) {
             return $this->getResponseError('Invalid request');
@@ -57,29 +61,34 @@ class ControllerExtensionPaymentUnitpay extends Controller {
 
         $method = $request['method'];
         $params = $request['params'];
-		
-		$this->load->model('checkout/order');
-    	$arOrder=$this->model_checkout_order->getOrder($params['account']);
-		
-        $total_price=round($arOrder['total']*$arOrder['currency_value'],2);
+
+        $this->load->model('checkout/order');
+        $arOrder=$this->model_checkout_order->getOrder($params['account']);
+
+        // Сумма заказа
+        $rur_code = 'RUB';
+        $rur_order_total = $this->currency->convert($arOrder['total'], $arOrder['currency_code'], $rur_code);
+        $total_price = $this->currency->format($rur_order_total, $rur_code, $arOrder['currency_value'], FALSE);
+        $total_price = number_format($total_price, 2);
+
 
         if ($params['signature'] != $this->getSha256SignatureByMethodAndParams(
                 $method, $params, $this->config->get('unitpay_key'))) {
             return $this->getResponseError('Incorrect digital signature');
         }
 
-    
+
         if ($method == 'check'){
-            
+
             if (!$arOrder){
                 return $this->getResponseError('Unable to confirm payment database');
             }
-            $itemsCount = floor($params['sum'] / $total_price);
 
-            if ($itemsCount <= 0){
-                return $this->getResponseError('Суммы ' . $params['sum'] . ' руб. не достаточно для оплаты товара ' .
+            if ($params['sum'] != $total_price){
+                return $this->getResponseError('Сумма оплаты в' . $params['sum'] . ' руб. не совпадает с суммой необходимой для оплаты товара' .
                     'стоимостью ' . $total_price . ' руб.');
             }
+
             $checkResult = $this->check($params);
             if ($checkResult !== true){
                 return $this->getResponseError($checkResult);
@@ -89,7 +98,7 @@ class ControllerExtensionPaymentUnitpay extends Controller {
         }
 
         if ($method == 'pay'){
-            if ($arOrder && $arOrder['order_status_id'] !== '0'){
+            if ($arOrder && $arOrder['order_status_id'] == $this->config->get('unitpay_order_status_id_after_pay')){
                 return $this->getResponseSuccess('Payment has already been paid');
             }
 
@@ -102,10 +111,29 @@ class ControllerExtensionPaymentUnitpay extends Controller {
             return $this->getResponseSuccess('PAY is successful');
         }
 
-	return $this->getResponseError($method.' not supported');
+        if ($method == 'error'){
+            if (!$arOrder){
+                return $this->getResponseError('Unable to confirm payment database');
+            }
+
+            if ($this->config->get('unitpay_set_error_status')){
+                $this->error($params);
+            }
+
+            return $this->getResponseSuccess('ERROR is successful');
+        }
+
+        return $this->getResponseError($method.' not supported');
     }
-	
-   
+
+    public function confirm()
+    {
+        $this->load->model('checkout/order');
+        if ($this->config->get('unitpay_create_order')=='1') $this->model_checkout_order->addOrderHistory($this->session->data['order_id'], $this->config->get('unitpay_order_status_id_after_create'), '', true);
+        if ($this->config->get('unitpay_cart_reset')=='1') $this->cart->clear();
+    }
+
+
     private function getResponseSuccess($message){
         return json_encode(array(
             "jsonrpc" => "2.0",
@@ -148,18 +176,23 @@ class ControllerExtensionPaymentUnitpay extends Controller {
         unset($params['sign']);
         return md5(join(null, $params).$secretKey);
     }
-	
-    private function check($params){       
-         if ($this->model_checkout_order->getOrder($params['account']))
-         {
-            return true;      
-         }  
-         return 'Character not found';
+
+    private function check($params){
+        if ($this->model_checkout_order->getOrder($params['account']))
+        {
+            return true;
+        }
+        return 'Order not found';
     }
 
     private function pay($params){
-      $new_order_status_id = $this->config->get('unitpay_order_status_id');
-	  $this->model_checkout_order->addOrderHistory($params['account'], $new_order_status_id, 'оплата через UnitPay');
+        $new_order_status_id = $this->config->get('unitpay_order_status_id_after_pay');
+        $this->model_checkout_order->addOrderHistory($params['account'], $new_order_status_id, 'оплата через UnitPay', true);
+    }
+
+    private function error($params){
+        $new_order_status_id = $this->config->get('unitpay_order_status_id_error');
+        $this->model_checkout_order->addOrderHistory($params['account'], $new_order_status_id, 'ошибка при оплате через UnitPay', false);
     }
 }
 ?>

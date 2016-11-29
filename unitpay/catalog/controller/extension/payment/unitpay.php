@@ -40,11 +40,7 @@ class ControllerExtensionPaymentUnitpay extends Controller {
 //tesrt
         $this->id = 'payment';
 
-        if (file_exists(DIR_TEMPLATE . $this->config->get('config_template') . '/template/extension/payment/unitpay.tpl')) {
-            return $this->load->view($this->config->get('config_template') . '/template/extension/payment/unitpay.tpl', $data);
-        } else {
-            return $this->load->view('default/template/extension/payment/unitpay.tpl', $data);
-        }
+        return $this->load->view('extension/payment/unitpay.tpl', $data);
 
     }
 
